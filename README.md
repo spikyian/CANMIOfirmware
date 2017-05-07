@@ -1,5 +1,5 @@
 # CANMIOfirmware
-PIC firmware for CANMIO with configurable IO
+PIC firmware for CANMIO with configurable IO. Uses the CBUSlib https://github.com/spikyian/CBUSlib.
 
 Currently work in progress.
 ToDos:
