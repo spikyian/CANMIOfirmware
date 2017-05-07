@@ -1,0 +1,106 @@
+/*
+ * File:   nodeVariables.c
+ * Author: Ian Hogg
+ *
+ * Created on 05 March 2016, 18:14
+ */
+
+/**
+ * Node variables contain global parameters that need to be persisted to Flash.
+ */
+
+#include "xc.h"
+#include "mioNv.h"
+#include "mioEEPROM.h"
+#include "events.h"
+
+const NodeVarTable nodeVarTable @AT_NV = {    //  Allow 128 bytes for NVs. Declared const so it gets put into Flash
+    0,  // sod delay
+    0,  // hb delay
+    0,  // cutoff
+    0,  // startup1
+    0,  // startup2
+    0,  // sequential
+    0,  // io[0].type
+    0,0,0,0,0,  // io[0]
+    0,  // io[1].type
+    0,0,0,0,0,  // io[1]
+    0,  // io[2].type
+    0,0,0,0,0,  // io[2]
+    0,  // io[3].type
+    0,0,0,0,0,  // io[3]
+    0,  // io[4].type
+    0,0,0,0,0,  // io[4]
+    0,  // io[5].type
+    0,0,0,0,0,  // io[5]
+    0,  // io[6].type
+    0,0,0,0,0,  // io[6]
+    0,  // io[7].type
+    0,0,0,0,0,  // io[7]
+    0,  // io[8].type
+    0,0,0,0,0,  // io[8]
+    0,  // io[9].type
+    0,0,0,0,0,  // io[9]
+    0,  // io[10].type
+    0,0,0,0,0,  // io[10]
+    0,  // io[11].type
+    0,0,0,0,0,  // io[11]
+    0,  // io[12].type
+    0,0,0,0,0,  // io[12]
+    0,  // io[13].type
+    0,0,0,0,0,  // io[13]
+    0,  // io[14].type
+    0,0,0,0,0,  // io[14]
+    0,  // io[15].type
+    0,0,0,0,0,  // io[15]
+};
+/*
+ Module specific NV routines
+ */
+
+
+/*
+ Validate value of NV based upon bounds and inter-dependencies
+ */
+unsigned char validateNV(unsigned char index, unsigned char oldValue, unsigned char value) {
+    return 0;
+} 
+
+void actUponNVchange(unsigned char index, unsigned char value) {
+    
+}
+
+/**
+ * Reset NV for the IO back to default. Flush of the Flash image must be done external to this function.
+ * @param i
+ */
+void defaultNVs(unsigned char i) {
+    // add the module's default nv for this io
+    switch(readFlashBlock(NV_IO_TYPE(i))) {
+        case TYPE_INPUT:
+            writeFlashImage((BYTE*)(AT_NV+NV_IO_INPUT_ENABLE_OFF(i)), 0);
+            writeFlashImage((BYTE*)(AT_NV+NV_IO_INPUT_INVERTED(i)), 0);
+            writeFlashImage((BYTE*)(AT_NV+NV_IO_INPUT_ON_DELAY(i)), 0);
+            writeFlashImage((BYTE*)(AT_NV+NV_IO_INPUT_OFF_DELAY(i)), 0);
+            break;
+        case TYPE_OUTPUT:
+            writeFlashImage((BYTE*)(AT_NV+NV_IO_OUTPUT_PULSE_DURATION(i)), 20);
+            writeFlashImage((BYTE*)(AT_NV+NV_IO_OUTPUT_INVERTED(i)), 0);
+            break;
+        case TYPE_SERVO:
+            writeFlashImage((BYTE*)(AT_NV+NV_IO_SERVO_START_POS(i)), 0);
+            writeFlashImage((BYTE*)(AT_NV+NV_IO_SERVO_END_POS(i)), 90);
+            writeFlashImage((BYTE*)(AT_NV+NV_IO_SERVO_SE_SPEED(i)), 20);
+            writeFlashImage((BYTE*)(AT_NV+NV_IO_SERVO_ES_SPEED(i)), 20);
+        case TYPE_BOUNCE:
+            writeFlashImage((BYTE*)(AT_NV+NV_IO_BOUNCE_START_POS(i)), 0);
+            writeFlashImage((BYTE*)(AT_NV+NV_IO_BOUNCE_END_POS(i)), 90);
+            writeFlashImage((BYTE*)(AT_NV+NV_IO_BOUNCE_PROFILE(i)), 1);
+        case TYPE_MULTI:
+            writeFlashImage((BYTE*)(AT_NV+NV_IO_MULTI_NUM_POS(i)), 3);
+            writeFlashImage((BYTE*)(AT_NV+NV_IO_MULTI_POS1(i)), 0);
+            writeFlashImage((BYTE*)(AT_NV+NV_IO_MULTI_POS2(i)), 45);
+            writeFlashImage((BYTE*)(AT_NV+NV_IO_MULTI_POS3(i)), 90);
+            break;
+    }
+}
