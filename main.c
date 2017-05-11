@@ -3,18 +3,30 @@
  * Author: Ian Hogg
  * 
  * This is the main for the Configurable CANMIO module.
+ * 
+ * Timer usage:
+ * TMR0 used in ticktime for symbol times. Used to trigger next set of servo pulses
+ * TMR1 Servo outputs 0, 4, 8, 12
+ * TMR2 Servo outputs 1, 5, 9, 13
+ * TMR3 Servo outputs 2, 6, 10, 14
+ * TMR4 Servo outputs 3, 7, 11, 15
  *
  * Created on 10 April 2017, 10:26
  */
 /** TODOs
  * Bootloader
- * change the START_SOD_EVENT for a learned action/event
- * consumed event processing
- * validate NV changes
+ * -- change the START_SOD_EVENT for a learned action/event
+ * -- consumed event processing
+ * -- validate NV changes
  * servo outputs
- * debounce inputs
+ * -- debounce inputs
+ * -- invert inputs
+ * -- invert outputs
+ * digital output pulse
  * bounce profiles
  * multi-position outputs
+ * sequence servos
+ * remember output state in EEPROM
  */
 
 /**
@@ -22,7 +34,7 @@
  */
 
 #include <xc.h>
-
+#include <stddef.h>
 #include "module.h"
 #include "canmio.h"
 #include "mioFLiM.h"
@@ -30,16 +42,19 @@
 #include "StatusLeds.h"
 #include "inputs.h"
 #include "mioEEPROM.h"
-#include "mioEvents.h"
 #include "events.h"
 #include "mioNv.h"
 #include "FLiM.h"
 #include "romops.h"
 
 extern BYTE BlinkLED();
-
-// forward declarations
-BYTE inputScan(void);
+extern void startServos();
+extern void initServos();
+extern void pollServos();
+extern inline void timer1DoneInterruptHandler();
+extern inline void timer2DoneInterruptHandler();
+extern inline void timer3DoneInterruptHandler();
+extern inline void timer4DoneInterruptHandler();
 
 unsigned char canid = 0;        // initialised from ee
 unsigned int nn = DEFAULT_NN;   // initialised from ee
@@ -65,9 +80,8 @@ Config configs[NUM_IO] = {
     {7,  'A', 5}    //15
 };
 
-// local function prototypes
-/*
- */
+// forward declarations
+BYTE inputScan(void);
 void __init(void);
 BOOL checkCBUS( void);
 void ISRHigh(void);
@@ -76,6 +90,8 @@ void configIO(unsigned char io);
 void defaultPersistentMemory(void);
 void setType(unsigned char i, unsigned char type);
 void setOutput(unsigned char i, unsigned char state, unsigned char type);
+void sendProducedEvent(unsigned char action, BOOL on);
+
 
 #ifdef __C18__
 void high_irq_errata_fix(void);
@@ -139,7 +155,8 @@ int main(void) @0x800 {
 #endif
     TickValue   startTime;
     BOOL        started = FALSE;
-  
+    TickValue   lastServoTime;
+    
     initialise();
     startTime.Val = tickGet();
  
@@ -148,14 +165,19 @@ int main(void) @0x800 {
         if (!started && (tickTimeSince(startTime) > (NV->sendSodDelay * HUNDRED_MILI_SECOND) + TWO_SECOND)) {
             started = TRUE;
             if (NV->sendSodDelay > 0) {
-                sendStartupSod(START_SOD_EVENT);
+                sendProducedEvent(ACTION_SOD, TRUE);
             }
         }
         checkCBUS();    // Consume any CBUS message - display it if not display message mode
         FLiMSWCheck();  // Check FLiM switch for any mode changes
-        // Strobe keyboard for button presses
+        
         if (started) {
-            inputScan();
+            inputScan();    // Strobe keyboard for button presses
+            if (tickTimeSince(lastServoTime) > 5*ONE_MILI_SECOND) {
+                startServos();  // call every 5ms
+                lastServoTime.Val = tickGet();
+            }
+            pollServos();
         }
         // Check for any flashing status LEDs
         checkFlashing();
@@ -167,6 +189,9 @@ int main(void) @0x800 {
  * The order of initialisation is important.
  */
 void initialise(void) {
+    // enable the 4x PLL
+    OSCTUNEbits.PLLEN = 1;
+    
     // Digital I/O - disable analogue
     ANCON0 = 0;
     ANCON1 = 0;
@@ -181,15 +206,18 @@ void initialise(void) {
     canid = ee_read((WORD)EE_CAN_ID);
     nn = ee_read((WORD)EE_NODE_ID);
     
+    initTicker();
     // set up io pins based upon type
     unsigned char i;
     for (i=0; i< NUM_IO; i++) {
         configIO(i);
     }
     initInputScan();
+    initServos();
     mioFlimInit(); // This will call FLiMinit, which, in turn, calls eventsInit
 
-
+    // Enable interrupt priority
+    RCONbits.IPEN = 1;
     // enable interrupts, all init now done
     ei();
  
@@ -223,9 +251,9 @@ void defaultPersistentMemory(void) {
 void setType(unsigned char i, unsigned char type) {
     writeFlashImage((BYTE*)(AT_NV+NV_IO_TYPE(i)), type);
     // set to default NVs
-    defaultNVs(i);
+    defaultNVs(i, type);
     // set up the default events
-    defaultEvents(i);
+    defaultEvents(i, type);
 }
 
 /**
@@ -243,33 +271,6 @@ BOOL checkCBUS( void ) {
     }
     return FALSE;
 }
-
-
-#ifdef __C18__
-// C intialisation - declare a copy here so the library version is not used as it may link down in bootloader area
-
-void __init(void)
-{
-}
-
-// Interrupt service routines
-#if defined(__18CXX)
-    #pragma interruptlow ISRHigh
-    void ISRHigh(void)
-#elif defined(__dsPIC30F__) || defined(__dsPIC33F__) || defined(__PIC24F__) || defined(__PIC24FK__) || defined(__PIC24H__)
-    void _ISRFAST __attribute__((interrupt, auto_psv)) _INT1Interrupt(void)
-#elif defined(__PIC32MX__)
-    void __ISR(_EXTERNAL_1_VECTOR, ipl4) _INT1Interrupt(void)
-#else
-    void _ISRFAST _INT1Interrupt(void) {
-#endif
-#else 
-    void interrupt low_priority low_isr(void) {
-#endif
-    tickISR();
-    canInterruptHandler();
-}
-
 
 
 /**
@@ -312,52 +313,58 @@ void configIO(unsigned char i) {
     }
 }
 
-/**
- * Set an output to the requested state.
- * TODO At the moment this just handles all types as digital outputs. Need to implement
- * the servo code and bounce too.
- * TODO send produced events.
- * 
- * @param i the IO
- * @param state on/off or position
- * @param type type of output
- */
-void setOutput(unsigned char i, unsigned char state, unsigned char type) {
-    switch (configs[i].port) {
-        case 'A':
-            if (state) {
-                // set it
-                LATA |= (1<<configs[i].no);
-            } else {
-                // clear it
-                LATA &= ~(1<<configs[i].no);
-            }
-            break;
-        case 'B':
-            if (state) {
-                // set it
-                LATB |= (1<<configs[i].no);
-            } else {
-                // clear it
-                LATB &= ~(1<<configs[i].no);
-            }
-            break;
-        case 'C':
-            if (state) {
-                // set it
-                LATC |= (1<<configs[i].no);
-            } else {
-                // clear it
-                LATC &= ~(1<<configs[i].no);
-            }
-            break;
+
+void sendProducedEvent(unsigned char action, BOOL on) {
+    const Event * ev = getProducedEvent(action);
+    if (ev != NULL) {
+        cbusSendEvent( 0, ev->NN, ev->EN, on );
     }
-            
+}
+
+#ifdef __C18__
+// C intialisation - declare a copy here so the library version is not used as it may link down in bootloader area
+
+void __init(void)
+{
+}
+
+// Interrupt service routines
+#if defined(__18CXX)
+    #pragma interruptlow ISRHigh
+    void ISRHigh(void)
+#elif defined(__dsPIC30F__) || defined(__dsPIC33F__) || defined(__PIC24F__) || defined(__PIC24FK__) || defined(__PIC24H__)
+    void _ISRFAST __attribute__((interrupt, auto_psv)) _INT1Interrupt(void)
+#elif defined(__PIC32MX__)
+    void __ISR(_EXTERNAL_1_VECTOR, ipl4) _INT1Interrupt(void)
+#else
+    void _ISRFAST _INT1Interrupt(void) {
+#endif
+#else 
+    void interrupt low_priority low_isr(void) {
+#endif
+    tickISR();
+    canInterruptHandler();
 }
 
 
 void interrupt high_priority high_isr (void)
 {
- /* service routine body goes here */
+ /* service the servo pulse width timers */
+    if (PIR1bits.TMR1IF) {
+        timer1DoneInterruptHandler();
+        PIR1bits.TMR1IF = 0;
+    }
+    if (PIR1bits.TMR2IF) {
+        timer2DoneInterruptHandler();
+        PIR1bits.TMR2IF = 0;
+    }
+    if (PIR2bits.TMR3IF) {
+        timer3DoneInterruptHandler();
+        PIR2bits.TMR3IF = 0;
+    }
+    if (PIR4bits.TMR4IF) {
+        timer4DoneInterruptHandler();
+        PIR4bits.TMR4IF = 0;
+    }
 }
 

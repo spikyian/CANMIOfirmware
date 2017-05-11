@@ -14,6 +14,8 @@
 #include "mioEEPROM.h"
 #include "events.h"
 
+extern void setType(unsigned char i, unsigned char type);
+
 const NodeVarTable nodeVarTable @AT_NV = {    //  Allow 128 bytes for NVs. Declared const so it gets put into Flash
     0,  // sod delay
     0,  // hb delay
@@ -59,24 +61,30 @@ const NodeVarTable nodeVarTable @AT_NV = {    //  Allow 128 bytes for NVs. Decla
  */
 
 
-/*
- Validate value of NV based upon bounds and inter-dependencies
+/**
+ * Validate value of NV based upon bounds and inter-dependencies.
+ * @return TRUE is a valid change
  */
-unsigned char validateNV(unsigned char index, unsigned char oldValue, unsigned char value) {
-    return 0;
+BOOL validateNV(unsigned char index, unsigned char oldValue, unsigned char value) {
+    if (IS_NV_TYPE(index)) {
+        if (value > TYPE_MULTI) return FALSE;
+    }
+    return TRUE;
 } 
 
 void actUponNVchange(unsigned char index, unsigned char value) {
-    
+    if (IS_NV_TYPE(index)) {
+        setType(IO_NV(index), value);
+    }
 }
 
 /**
  * Reset NV for the IO back to default. Flush of the Flash image must be done external to this function.
  * @param i
  */
-void defaultNVs(unsigned char i) {
+void defaultNVs(unsigned char i, unsigned char type) {
     // add the module's default nv for this io
-    switch(readFlashBlock(NV_IO_TYPE(i))) {
+    switch(type) {
         case TYPE_INPUT:
             writeFlashImage((BYTE*)(AT_NV+NV_IO_INPUT_ENABLE_OFF(i)), 0);
             writeFlashImage((BYTE*)(AT_NV+NV_IO_INPUT_INVERTED(i)), 0);
@@ -84,7 +92,7 @@ void defaultNVs(unsigned char i) {
             writeFlashImage((BYTE*)(AT_NV+NV_IO_INPUT_OFF_DELAY(i)), 0);
             break;
         case TYPE_OUTPUT:
-            writeFlashImage((BYTE*)(AT_NV+NV_IO_OUTPUT_PULSE_DURATION(i)), 20);
+            writeFlashImage((BYTE*)(AT_NV+NV_IO_OUTPUT_PULSE_DURATION(i)), 0);
             writeFlashImage((BYTE*)(AT_NV+NV_IO_OUTPUT_INVERTED(i)), 0);
             break;
         case TYPE_SERVO:

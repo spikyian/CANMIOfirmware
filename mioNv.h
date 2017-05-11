@@ -64,6 +64,8 @@ extern "C" {
 #define NV_IO_MULTI_POS3(i)             (NV_IO_START + NVS_PER_IO*(i) + 4)
 #define NV_IO_MULTI_POS4(i)             (NV_IO_START + NVS_PER_IO*(i) + 5)
 
+#define IS_NV_TYPE(i)                   (((i-NV_IO_START) % NVS_PER_IO) == 0)
+#define IO_NV(i)                        ((i-NV_IO_START)/NVS_PER_IO)
   
 // the types
 #define TYPE_INPUT                  0
@@ -126,7 +128,7 @@ extern unsigned int getNodeVar(unsigned int index);
 extern void setNodeVar(unsigned int index, unsigned int value);
 extern BOOL validateNV(BYTE nvIndex, BYTE oldValue, BYTE value);
 void actUponNVchange(unsigned char index, unsigned char value);
-extern void defaultNVs(unsigned char i);
+extern void defaultNVs(unsigned char i, unsigned char type);
 
 
 #ifdef	__cplusplus

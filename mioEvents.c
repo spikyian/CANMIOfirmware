@@ -16,18 +16,20 @@
 #include "events.h"
 #include <stddef.h>
 
+extern void setOutput(unsigned char io, unsigned char state, unsigned char type);
+
 /**
  * Reset events for the IO back to default. Called when the Type lf the IO
  * is changed.
  * @param i the IO number
  */
-void defaultEvents(unsigned char i) {
+void defaultEvents(unsigned char i, unsigned char type) {
     WORD nn = ee_read((WORD)EE_NODE_ID);
     WORD en;
     clearEvents(i);
     // add the module's default events for this io
 
-    switch(ee_read(NV_IO_TYPE(i))) {
+    switch(type) {
         case TYPE_INPUT:
             en=i+1;
             // Produce ACON/ASON and ACOF/ASOF events with en as port number
@@ -57,7 +59,7 @@ void defaultAllEvents(void) {
     // add the module's default events
     unsigned char i;
     for (i=0; i<NUM_IO; i++) {
-        defaultEvents(i);
+        defaultEvents(i, nodeVarTable.moduleNVs.io[i].type);
     }
 }
 
@@ -82,23 +84,10 @@ void clearEvents(unsigned char i) {
  * @param msg the full CBUS message so that OPC  and DATA can be retrieved.
  */
 void processEvent(BYTE action, BYTE * msg) {
-    // TODO
     if (action < NUM_PRODUCER_ACTIONS) return;
     action -= NUM_PRODUCER_ACTIONS;
     unsigned char io = CONSUMER_IO(action);
     action = CONSUMER_ACTION(action);
-    switch(action) {
-        case ACTION_IO_CONSUMER_1:
-            // TODO
-            break;
-        case ACTION_IO_CONSUMER_2:
-            // TODO
-            break;
-        case ACTION_IO_CONSUMER_3:
-            // TODO
-            break;
-        case ACTION_IO_CONSUMER_4:
-            // TODO
-            break;
-    }
+    unsigned char type = NV->io[io].type;
+    setOutput(io, action, type);
 }
