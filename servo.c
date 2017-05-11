@@ -268,14 +268,21 @@ void pollServos() {
 
 
 /**
- * Set a servo output to the required state.
+ * Set a servo moving to the required state.
  * Handles inverted outputs and generates Produced events.
  * 
  * @param io
  * @param action
  */
 void setServoOutput(unsigned char io, unsigned char action) {
-    // TODO
+    switch (action) {
+        case ACTION_IO_CONSUMER_1:  // SERVO OFF
+            servoState[io] = MOVING2OFF;
+            break;
+        case ACTION_IO_CONSUMER_2:  // SERVO ON
+            servoState[io] = MOVING2ON;
+            break;
+    }
 }
 
 /**
