@@ -46,17 +46,20 @@ extern Config configs[NUM_IO];
 extern void sendProducedEvent(unsigned char action, BOOL on);
 extern void setOutputPin(unsigned char io, BOOL state);
 
-// future state changes
-struct {
-    DWORD when;
-    BOOL state;
-    BOOL active;
-} futures[NUM_IO];
 
 enum ServoState {
-    OFF, STOPPED, MOVING2ON, MOVING2OFF
+    OFF,            // not generating any pulses
+    STOPPED,        // pulse width fixed, reached desired destination
+    MOVING          // pulse width changing
 } servoState[NUM_IO];
 unsigned char currentPos[NUM_IO];
+unsigned char targetPos[NUM_IO];
+unsigned char speed[NUM_IO];
+unsigned char eventFlags[NUM_IO];
+#define EVENT_FLAG_ON       1
+#define EVENT_FLAG_OFF      2
+#define EVENT_FLAG_MID      4
+TickValue  ticksWhenStopped[NUM_IO];
 
 static unsigned char block;
 static unsigned char timer2Counter; // the High order byte to make T2 16bit
@@ -65,6 +68,8 @@ static unsigned char timer4Counter; // the High order byte to make T4 16bit
 void initServos() {
     for (unsigned char io=0; io<NUM_IO; io++) {
         servoState[io] = OFF;
+        currentPos[io] = targetPos[io] = ee_read(EE_OP_STATE-io);   // restore last known positions
+        speed[io] = 0;
     }
     block = 3;
     // initialise the timers for one-shot mode with interrupts and clocked from Fosc/4
@@ -93,7 +98,8 @@ void initServos() {
     PIE4bits.TMR4IE = 1;        // enable interrupt
 }
 /**
- * This gets called ever approx 5ms so start the next set of servos.
+ * This gets called ever approx 5ms so start the next set of servo pulses.
+ * Checks that the servo isn't OFF
  * @param io
  */
 void startServos() {
@@ -101,10 +107,18 @@ void startServos() {
     // timers expire
     block++;
     if (block > 3) block = 0;
-    if (nodeVarTable.moduleNVs.io[block*4].type == TYPE_SERVO) setupTimer1(block*4);
-    if (nodeVarTable.moduleNVs.io[block*4+1].type == TYPE_SERVO) setupTimer2(block*4+1);
-    if (nodeVarTable.moduleNVs.io[block*4+2].type == TYPE_SERVO) setupTimer3(block*4+2);
-    if (nodeVarTable.moduleNVs.io[block*4+3].type == TYPE_SERVO) setupTimer4(block*4+3);
+    if (nodeVarTable.moduleNVs.io[block*4].type == TYPE_SERVO) {
+        if (servoState[block*4] != OFF) setupTimer1(block*4);
+    }
+    if (nodeVarTable.moduleNVs.io[block*4+1].type == TYPE_SERVO) {
+        if (servoState[block*4+1] != OFF) setupTimer2(block*4+1);
+    }
+    if (nodeVarTable.moduleNVs.io[block*4+2].type == TYPE_SERVO) {
+        if (servoState[block*4+2] != OFF) setupTimer3(block*4+2);
+    }
+    if (nodeVarTable.moduleNVs.io[block*4+3].type == TYPE_SERVO) {
+        if (servoState[block*4+3] != OFF) setupTimer4(block*4+3);
+    }
 }
 
 /**
@@ -190,76 +204,46 @@ void pollServos() {
         if (nodeVarTable.moduleNVs.io[io].type == TYPE_SERVO) {
             BOOL beforeMidway=FALSE;
             switch (servoState[io]) {
-                case MOVING2ON:
-                    if (nodeVarTable.moduleNVs.io[io].nv_io.nv_servo.servo_end_pos > currentPos[io]) {
+                case MOVING:
+                    if (targetPos[io] > currentPos[io]) {
                         if (currentPos[io] < midway) {
                             beforeMidway = TRUE;
                         }
-                        currentPos[io] += nodeVarTable.moduleNVs.io[io].nv_io.nv_servo.servo_se_speed;
-                        if (currentPos[io] > nodeVarTable.moduleNVs.io[io].nv_io.nv_servo.servo_end_pos) {
-                            currentPos[io = nodeVarTable.moduleNVs.io[io].nv_io.nv_servo.servo_end_pos];
-                        }
-                        if ((currentPos[io] >= midway) && beforeMidway) {
+                        currentPos[io] += speed[io];
+                        if (currentPos[io] > targetPos[io]) {
+                            currentPos[io] = targetPos[io];                       }
+                        if ((eventFlags[io] & EVENT_FLAG_MID) && (currentPos[io] >= midway) && beforeMidway) {
                             // passed through midway point
                             sendProducedEvent(ACTION_IO_PRODUCER_SERVO_MID(io), TRUE);
                         }
-                    }
-                    if (nodeVarTable.moduleNVs.io[io].nv_io.nv_servo.servo_end_pos < currentPos[io]) {
+                    } else if (targetPos[io] < currentPos[io]) {
                         if (currentPos[io] > midway) {
                             beforeMidway = TRUE;
                         }
-                        currentPos[io] -= nodeVarTable.moduleNVs.io[io].nv_io.nv_servo.servo_se_speed;
-                        if (currentPos[io] < nodeVarTable.moduleNVs.io[io].nv_io.nv_servo.servo_end_pos) {
-                            currentPos[io = nodeVarTable.moduleNVs.io[io].nv_io.nv_servo.servo_end_pos];
+                        currentPos[io] -= speed[io];
+                        if (currentPos[io] < targetPos[io]) {
+                            currentPos[io = targetPos[io]];
                         }
-                        if ((currentPos[io] <= midway) && beforeMidway) {
+                        if ((eventFlags[io] & EVENT_FLAG_MID) && (currentPos[io] <= midway) && beforeMidway) {
                             // passed through midway point
                             sendProducedEvent(ACTION_IO_PRODUCER_SERVO_MID(io), TRUE);
                         }
                     }
-                    if (nodeVarTable.moduleNVs.io[io].nv_io.nv_servo.servo_end_pos == currentPos[io]) {
+                    if (targetPos[io] == currentPos[io]) {
                         servoState[io] = STOPPED;
-                        // send ON event
-                        sendProducedEvent(ACTION_IO_PRODUCER_SERVO_ON(io), TRUE);
-                    }
-                    break;
-                case MOVING2OFF:
-                    if (nodeVarTable.moduleNVs.io[io].nv_io.nv_servo.servo_start_pos > currentPos[io]) {
-                        if (currentPos[io] < midway) {
-                            beforeMidway = TRUE;
-                        }
-                        currentPos[io] += nodeVarTable.moduleNVs.io[io].nv_io.nv_servo.servo_es_speed;
-                        if (currentPos[io] > nodeVarTable.moduleNVs.io[io].nv_io.nv_servo.servo_start_pos) {
-                            currentPos[io = nodeVarTable.moduleNVs.io[io].nv_io.nv_servo.servo_start_pos];
-                        }
-                        if ((currentPos[io] >= midway) && beforeMidway) {
-                            // passed through midway point
-                            sendProducedEvent(ACTION_IO_PRODUCER_SERVO_MID(io), TRUE);
-                        }
-                    }
-                    if (nodeVarTable.moduleNVs.io[io].nv_io.nv_servo.servo_start_pos < currentPos[io]) {
-                        if (currentPos[io] > midway) {
-                            beforeMidway = TRUE;
-                        }
-                        currentPos[io] -= nodeVarTable.moduleNVs.io[io].nv_io.nv_servo.servo_es_speed;
-                        if (currentPos[io] < nodeVarTable.moduleNVs.io[io].nv_io.nv_servo.servo_start_pos) {
-                            currentPos[io = nodeVarTable.moduleNVs.io[io].nv_io.nv_servo.servo_start_pos];
-                        }
-                        if ((currentPos[io] <= midway) && beforeMidway) {
-                            // passed through midway point
-                            sendProducedEvent(ACTION_IO_PRODUCER_SERVO_MID(io), TRUE);
-                        }
-                    }
-                    if (nodeVarTable.moduleNVs.io[io].nv_io.nv_servo.servo_start_pos == currentPos[io]) {
-                        servoState[io] = STOPPED;
-                        // send OFF event
-                        sendProducedEvent(ACTION_IO_PRODUCER_SERVO_OFF(io), FALSE);
+                        ticksWhenStopped[io].Val = tickGet();
+                        // send ON event or OFF
+                        sendProducedEvent(ACTION_IO_PRODUCER_SERVO_ON(io), (eventFlags[io]&EVENT_FLAG_ON) ? TRUE : FALSE);
                     }
                     break;
                 case STOPPED:
-                    // if we don't already have an OFF scheduled then schedule a change to OFF in 1 second
+                    // if we have been stopped for more than 1 sec then change to OFF
+                    if (tickTimeSince(ticksWhenStopped[io]) > ONE_SECOND) {
+                        servoState[io] = OFF;
+                    }
                 case OFF:
-                // output off
+                    // output off
+                    // no need to do anything since if output is OFF we don't start the timer in startServos
                     break;
             }
         }
@@ -277,10 +261,16 @@ void pollServos() {
 void setServoOutput(unsigned char io, unsigned char action) {
     switch (action) {
         case ACTION_IO_CONSUMER_1:  // SERVO OFF
-            servoState[io] = MOVING2OFF;
+            targetPos[io] = nodeVarTable.moduleNVs.io[io].nv_io.nv_servo.servo_start_pos;
+            speed[io] = nodeVarTable.moduleNVs.io[io].nv_io.nv_servo.servo_es_speed;
+            eventFlags[io] = EVENT_FLAG_OFF & EVENT_FLAG_MID;
+            servoState[io] = MOVING;
             break;
         case ACTION_IO_CONSUMER_2:  // SERVO ON
-            servoState[io] = MOVING2ON;
+            targetPos[io] = nodeVarTable.moduleNVs.io[io].nv_io.nv_servo.servo_end_pos;
+            speed[io] = nodeVarTable.moduleNVs.io[io].nv_io.nv_servo.servo_se_speed;
+            eventFlags[io] = EVENT_FLAG_ON & EVENT_FLAG_MID;
+            servoState[io] = MOVING;
             break;
     }
 }
@@ -293,7 +283,7 @@ void setServoOutput(unsigned char io, unsigned char action) {
  * @param action
  */
 void setBounceOutput(unsigned char io, unsigned char action) {
-    // TODO
+    // TODO Bounce output type
 }
 
 /**
@@ -302,7 +292,36 @@ void setBounceOutput(unsigned char io, unsigned char action) {
  * @param action
  */
 void setMultiOutput(unsigned char io, unsigned char action) {
-    // TODO
+    switch (action) {
+        case ACTION_IO_CONSUMER_1:  // SERVO Position 1
+            targetPos[io] = nodeVarTable.moduleNVs.io[io].nv_io.nv_multi.multi_pos1;
+            speed[io] = nodeVarTable.moduleNVs.servo_speed;
+            eventFlags[io] = EVENT_FLAG_ON;
+            servoState[io] = MOVING;
+            break;
+        case ACTION_IO_CONSUMER_2:  // SERVO Position 2
+            targetPos[io] = nodeVarTable.moduleNVs.io[io].nv_io.nv_multi.multi_pos2;
+            speed[io] = nodeVarTable.moduleNVs.servo_speed;
+            eventFlags[io] = EVENT_FLAG_ON;
+            servoState[io] = MOVING;
+            break;
+        case ACTION_IO_CONSUMER_3:  // SERVO Position 3
+            if (nodeVarTable.moduleNVs.io[io].nv_io.nv_multi.multi_num_pos >= 3) {
+                targetPos[io] = nodeVarTable.moduleNVs.io[io].nv_io.nv_multi.multi_pos3;
+                speed[io] = nodeVarTable.moduleNVs.servo_speed;
+                eventFlags[io] = EVENT_FLAG_ON;
+                servoState[io] = MOVING;
+            }
+            break;
+        case ACTION_IO_CONSUMER_4:  // SERVO Position 4
+            if (nodeVarTable.moduleNVs.io[io].nv_io.nv_multi.multi_num_pos >= 4) {
+                targetPos[io] = nodeVarTable.moduleNVs.io[io].nv_io.nv_multi.multi_pos4;
+                speed[io] = nodeVarTable.moduleNVs.servo_speed;
+                eventFlags[io] = EVENT_FLAG_ON;
+                servoState[io] = MOVING;
+            }
+            break;
+    }
 }
 
 

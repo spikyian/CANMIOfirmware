@@ -47,7 +47,6 @@ void initInputScan(void) {
  *   
  */
 void inputScan(void) {
-    // TODO
     for (unsigned char i=0; i< NUM_IO; i++) {
         if (nodeVarTable.moduleNVs.io[i].type == TYPE_INPUT) {
             BYTE input = readInput(i);;

@@ -117,7 +117,7 @@ void setDigitalOutput(unsigned char io, unsigned char action) {
     if (NV->io[io].nv_io.nv_output.outout_inverted) {
         state = state ? 0:1;
     }
-//   setOutputPin(io, state);
+    setOutputPin(io, state);
     sendProducedEvent(state ? ACTION_IO_PRODUCER_OUTPUT_ON(io):
                 ACTION_IO_PRODUCER_OUTPUT_OFF(io), state);
     // Was this a ON and we have a pulse duration defined?

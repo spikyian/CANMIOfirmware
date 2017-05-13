@@ -23,6 +23,8 @@ const NodeVarTable nodeVarTable @AT_NV = {    //  Allow 128 bytes for NVs. Decla
     0,  // startup1
     0,  // startup2
     0,  // sequential
+    2,  // servo speed
+    0,0,0,0,0,0,0,0,  // spare
     0,  // io[0].type
     0,0,0,0,0,  // io[0]
     0,  // io[1].type

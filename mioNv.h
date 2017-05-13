@@ -31,15 +31,15 @@ extern "C" {
 #define NV_SERVO_STARTUP_B1             4
 #define NV_SERVO_STARTUP_B2             5
 #define NV_SERVO_SEQUENTIAL             6
-#define NV_SPARE1                       7
-#define NV_SPARE2                       8
-#define NV_SPARE3                       9
-#define NV_SPARE4                       10
-#define NV_SPARE5                       11
-#define NV_SPARE6                       12
-#define NV_SPARE7                       13
-#define NV_SPARE8                       14
-#define NV_SPARE9                       15
+#define NV_SERVO_SPEED                  7   // Used for Multi and Bounce types where there isn't an NV to define speed.
+#define NV_SPARE1                       8
+#define NV_SPARE2                       9
+#define NV_SPARE3                       10
+#define NV_SPARE4                       11
+#define NV_SPARE5                       12
+#define NV_SPARE6                       13
+#define NV_SPARE7                       14
+#define NV_SPARE8                       15
 #define NV_IO_START                     16
 #define NVS_PER_IO                      6
     
@@ -117,9 +117,10 @@ typedef struct {
         BYTE cutoff;                  // whether servos stop when they reach their destination
         WORD startup;                 // ??
         BYTE sequential;              // whether outputs change sequentially or all together
+        BYTE servo_speed;               // default servo speed
+        BYTE spare[8];
         NvIo io[NUM_IO];                 // config for each IO
 } ModuleNvDefs;
-
 
 #define NV_NUM  sizeof(ModuleNvDefs)     // Number of node variables
 #define AT_NV   0x7F80                  // Where the NVs are stored. (_ROMSIZE - 128)  Size=128 bytes
@@ -128,7 +129,7 @@ extern unsigned int getNodeVar(unsigned int index);
 extern void setNodeVar(unsigned int index, unsigned int value);
 extern BOOL validateNV(BYTE nvIndex, BYTE oldValue, BYTE value);
 void actUponNVchange(unsigned char index, unsigned char value);
-extern void defaultNVs(unsigned char i, unsigned char type);
+extern void defaultNVs(unsigned char i, unsigned char type);        
 
 
 #ifdef	__cplusplus
