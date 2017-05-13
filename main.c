@@ -35,6 +35,7 @@
 
 #include <xc.h>
 #include <stddef.h>
+#include <pic18f25k80.h>
 #include "module.h"
 #include "canmio.h"
 #include "mioFLiM.h"
@@ -208,6 +209,10 @@ void initialise(void) {
     
     initTicker();
     // set up io pins based upon type
+    // Enable PORT B weak pullups
+    INTCON2bits.RBPU = 0;
+    // RB bits 0,1,4,5 need pullups
+    WPUB = 0x33; 
     unsigned char i;
     for (i=0; i< NUM_IO; i++) {
         configIO(i);
