@@ -32,8 +32,8 @@
 #include "GenericTypeDefs.h"
 #include "TickTime.h"
 
-#define POS2TICK_OFFSET         3600
-#define POS2TICK_MULTIPLIER     19
+#define POS2TICK_OFFSET         3600    // change this to affect the min pulse width
+#define POS2TICK_MULTIPLIER     19      // change this to affect the max pulse width
 
 // forward definitions
 void setupTimer1(unsigned char io);
@@ -195,7 +195,8 @@ inline void timer4DoneInterruptHandler() {
 
 /**
  * This handles the servo state machine and moves the servo towards the required
- * position and generates the Produced events.
+ * position and generates the Produced events. Called approx every 20ms i.e. 50 times a second.
+ * Therefore to move a servo through 200 positions using a speed of 5 will take just under 1 second.
  */
 void pollServos() {
     for (unsigned char io; io<NUM_IO; io++) {
@@ -214,7 +215,9 @@ void pollServos() {
                             currentPos[io] = targetPos[io];                       }
                         if ((eventFlags[io] & EVENT_FLAG_MID) && (currentPos[io] >= midway) && beforeMidway) {
                             // passed through midway point
-                            sendProducedEvent(ACTION_IO_PRODUCER_SERVO_MID(io), TRUE);
+                            // we send an ACON/ACOF depending upon direction servo was moving
+                            // This can then be used to drive frog switching relays
+                            sendProducedEvent(ACTION_IO_PRODUCER_SERVO_MID(io), beforeMidway ?TRUE:FALSE);
                         }
                     } else if (targetPos[io] < currentPos[io]) {
                         if (currentPos[io] > midway) {
