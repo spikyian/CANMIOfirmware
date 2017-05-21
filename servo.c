@@ -16,9 +16,9 @@
  * equates to a timer increment every 0.25us. We require counts from 1ms to 2ms or 4000 - 8000 timer ticks.
  * We have an 8 bit position value and actually want to allow a bit of overdrive of the servo 0.9ms - 2.1ms.
  * (3600 ticks - 8400 ticks). This gives a range of 4800 ticks over the 8 bit range. Therefore each value
- * of the position is equivalent to 14.0625 ticks - let's call it 14. The 3600 ticks at position 0 so to 
+ * of the position is equivalent to 18.75 ticks - let's call it 19. The 3600 ticks at position 0 so to 
  * convert from position to ticks we need to use:
- *    Ticks = 3600 + 14 * position 
+ *    Ticks = 3600 + 19 * position 
  * This is fine for the 16bit Timer1 and Timer3 but the 8 bit timers Timer2 and Timer4 need a bit more work.
  * 
  *
@@ -33,7 +33,7 @@
 #include "TickTime.h"
 
 #define POS2TICK_OFFSET         3600
-#define POS2TICK_MULTIPLIER     14
+#define POS2TICK_MULTIPLIER     19
 
 // forward definitions
 void setupTimer1(unsigned char io);
