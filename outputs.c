@@ -10,10 +10,10 @@
 
 #include "mioNv.h"
 #include "mioEvents.h"
-#include "FLiM.h"
+#include "../../CBUSlib/FLiM.h"
 #include "config.h"
-#include "GenericTypeDefs.h"
-#include "TickTime.h"
+#include "../../CBUSlib/GenericTypeDefs.h"
+#include "../../CBUSlib/TickTime.h"
 
 // Forward declarations
 void setDigitalOutput(unsigned char io, unsigned char state);

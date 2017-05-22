@@ -21,7 +21,7 @@
 extern "C" {
 #endif /* __cplusplus */
     
-#include "GenericTypeDefs.h"
+#include "../../CBUSlib/GenericTypeDefs.h"
 #include "canmio.h" 
 
 // Global NVs

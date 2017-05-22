@@ -50,7 +50,7 @@
 
 #include "canmio.h"
 #include "mioFLiM.h"
-#include "TickTime.h"
+#include "../CBUSlib/TickTime.h"
 #include "mioEvents.h"
 
 #ifndef __XC8__

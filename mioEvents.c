@@ -13,7 +13,7 @@
 #include "mioEvents.h"
 #include "mioEEPROM.h"
 #include "mioNv.h"
-#include "events.h"
+#include "../../CBUSlib/events.h"
 #include <stddef.h>
 
 extern void setOutput(unsigned char io, unsigned char state, unsigned char type);
@@ -62,13 +62,13 @@ void defaultAllEvents(void) {
         defaultEvents(i, nodeVarTable.moduleNVs.io[i].type);
     }
 }
-
+static unsigned char e;
 /**
  * Clear the events for the IO. Called prior to setting the default events.
  * @param i the IO number
  */
 void clearEvents(unsigned char i) {
-    unsigned char e;
+//    unsigned char e;
     for (e=0; e<CONSUMER_ACTIONS_PER_IO; e++) {
         deleteAction(ACTION_IO_CONSUMER_BASE(i)+e);
     }

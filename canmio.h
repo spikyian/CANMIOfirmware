@@ -39,8 +39,8 @@ extern "C" {
 #define MINOR_VER 	'a'        // Minor version character
 #define BETA        1
 
-#include "GenericTypeDefs.h"
-#include "cbusdefs8m.h"
+#include "../Cbuslib/GenericTypeDefs.h"
+#include "../CBUSlib/cbusdefs8n.h"
 
 #define MANU_ID         MANU_MERG
 #define MODULE_ID       MTYP_CANMIO

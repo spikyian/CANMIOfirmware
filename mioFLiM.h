@@ -14,7 +14,7 @@ extern "C" {
 #endif
 
 
-#include "FLiM.h"
+#include "../../CBUSlib/FLiM.h"
 #include "module.h"
 
 

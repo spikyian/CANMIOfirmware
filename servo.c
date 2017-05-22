@@ -27,10 +27,10 @@
 #include <xc.h>
 #include "mioNv.h"
 #include "mioEvents.h"
-#include "FLiM.h"
+#include "../../CBUSlib/FLiM.h"
 #include "config.h"
-#include "GenericTypeDefs.h"
-#include "TickTime.h"
+#include "../../CBUSlib/GenericTypeDefs.h"
+#include "../../CBUSlib/TickTime.h"
 
 #define POS2TICK_OFFSET         3600    // change this to affect the min pulse width
 #define POS2TICK_MULTIPLIER     19      // change this to affect the max pulse width

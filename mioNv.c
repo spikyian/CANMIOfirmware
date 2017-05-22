@@ -12,7 +12,7 @@
 #include "xc.h"
 #include "mioNv.h"
 #include "mioEEPROM.h"
-#include "events.h"
+#include "../../CBUSlib/events.h"
 
 extern void setType(unsigned char i, unsigned char type);
 
@@ -23,7 +23,7 @@ const NodeVarTable nodeVarTable @AT_NV = {    //  Allow 128 bytes for NVs. Decla
     0,  // startup1
     0,  // startup2
     0,  // sequential
-    2,  // servo speed
+    5,  // servo speed
     0,0,0,0,0,0,0,0,  // spare
     0,  // io[0].type
     0,0,0,0,0,  // io[0]
@@ -68,6 +68,7 @@ const NodeVarTable nodeVarTable @AT_NV = {    //  Allow 128 bytes for NVs. Decla
  * @return TRUE is a valid change
  */
 BOOL validateNV(unsigned char index, unsigned char oldValue, unsigned char value) {
+    // TODO more validations
     if (IS_NV_TYPE(index)) {
         if (value > TYPE_MULTI) return FALSE;
     }
@@ -76,6 +77,7 @@ BOOL validateNV(unsigned char index, unsigned char oldValue, unsigned char value
 
 void actUponNVchange(unsigned char index, unsigned char value) {
     if (IS_NV_TYPE(index)) {
+        // TODO more settings to be done
         setType(IO_NV(index), value);
     }
 }
@@ -98,19 +100,21 @@ void defaultNVs(unsigned char i, unsigned char type) {
             writeFlashImage((BYTE*)(AT_NV+NV_IO_OUTPUT_INVERTED(i)), 0);
             break;
         case TYPE_SERVO:
-            writeFlashImage((BYTE*)(AT_NV+NV_IO_SERVO_START_POS(i)), 0);
-            writeFlashImage((BYTE*)(AT_NV+NV_IO_SERVO_END_POS(i)), 90);
-            writeFlashImage((BYTE*)(AT_NV+NV_IO_SERVO_SE_SPEED(i)), 20);
-            writeFlashImage((BYTE*)(AT_NV+NV_IO_SERVO_ES_SPEED(i)), 20);
+            writeFlashImage((BYTE*)(AT_NV+NV_IO_SERVO_START_POS(i)), 25);
+            writeFlashImage((BYTE*)(AT_NV+NV_IO_SERVO_END_POS(i)), 200);
+            writeFlashImage((BYTE*)(AT_NV+NV_IO_SERVO_SE_SPEED(i)), 5);
+            writeFlashImage((BYTE*)(AT_NV+NV_IO_SERVO_ES_SPEED(i)), 5);
+            break;
         case TYPE_BOUNCE:
             writeFlashImage((BYTE*)(AT_NV+NV_IO_BOUNCE_START_POS(i)), 0);
             writeFlashImage((BYTE*)(AT_NV+NV_IO_BOUNCE_END_POS(i)), 90);
             writeFlashImage((BYTE*)(AT_NV+NV_IO_BOUNCE_PROFILE(i)), 1);
+            break;
         case TYPE_MULTI:
             writeFlashImage((BYTE*)(AT_NV+NV_IO_MULTI_NUM_POS(i)), 3);
-            writeFlashImage((BYTE*)(AT_NV+NV_IO_MULTI_POS1(i)), 0);
-            writeFlashImage((BYTE*)(AT_NV+NV_IO_MULTI_POS2(i)), 45);
-            writeFlashImage((BYTE*)(AT_NV+NV_IO_MULTI_POS3(i)), 90);
+            writeFlashImage((BYTE*)(AT_NV+NV_IO_MULTI_POS1(i)), 25);
+            writeFlashImage((BYTE*)(AT_NV+NV_IO_MULTI_POS2(i)), 110);
+            writeFlashImage((BYTE*)(AT_NV+NV_IO_MULTI_POS3(i)), 200);
             break;
     }
 }

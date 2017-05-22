@@ -15,16 +15,16 @@
  */
 /** TODOs
  * Bootloader and handling of OPC_BOOT
- * -- change the START_SOD_EVENT for a learned action/event
- * -- consumed event processing
- * -- validate NV changes
- * -- servo outputs
- * -- debounce inputs
- * -- invert inputs
- * -- invert outputs
+ * DONE  change the START_SOD_EVENT for a learned action/event
+ * DONE  consumed event processing
+ * DONE  validate NV changes
+ * DONE  servo outputs
+ * DONE  debounce inputs
+ * DONE  invert inputs
+ * DONE  invert outputs
  * digital output pulse output.c
  * bounce profiles  
- * -- multi-position outputs
+ * DONE  multi-position outputs
  * sequence servos servo.c
  * remember output state in EEPROM outputs.c & servo.c
  * Flicker LED on CAN activity can18.c
@@ -32,7 +32,9 @@
  * Check handling of NERD is correct and produces correct ENRSP events.c
  * Check handling of REVAL events.c
  * Check handling of REQEV events.c
- * Fix deleteAction events.c
+ * DONE  Fix deleteAction events.c
+ * More validation of NV values
+ * Need more config changes when changing type
  */
 
 /**
@@ -46,13 +48,13 @@
 #include "canmio.h"
 #include "mioFLiM.h"
 #include "config.h"
-#include "StatusLeds.h"
+#include "../CBUSlib/StatusLeds.h"
 #include "inputs.h"
 #include "mioEEPROM.h"
-#include "events.h"
+#include "../CBUSlib/events.h"
 #include "mioNv.h"
-#include "FLiM.h"
-#include "romops.h"
+#include "../CBUSlib/FLiM.h"
+#include "../CBUSlib/romops.h"
 
 extern BYTE BlinkLED();
 extern void startServos();
@@ -149,6 +151,12 @@ void LOW_INT_VECT(void)
 }
 #endif
 
+static TickValue   startTime;
+static BOOL        started = FALSE;
+static TickValue   lastServoPollTime;
+static TickValue   lastServoStartTime;
+static unsigned char io;
+
 // MAIN APPLICATION
         
 /**
@@ -160,10 +168,6 @@ void main(void) {
 #else
 int main(void) @0x800 {
 #endif
-    TickValue   startTime;
-    BOOL        started = FALSE;
-    TickValue   lastServoTime;
-    
     initialise();
     startTime.Val = tickGet();
  
@@ -180,11 +184,14 @@ int main(void) @0x800 {
         
         if (started) {
             inputScan();    // Strobe keyboard for button presses
-            if (tickTimeSince(lastServoTime) > 5*ONE_MILI_SECOND) {
+            if (tickTimeSince(lastServoStartTime) > 5*ONE_MILI_SECOND) {
                 startServos();  // call every 5ms
-                lastServoTime.Val = tickGet();
+                lastServoStartTime.Val = tickGet();
             }
-            pollServos();
+            if (tickTimeSince(lastServoPollTime) > 20*ONE_MILI_SECOND) {
+                pollServos();
+                lastServoPollTime.Val = tickGet();
+            }
         }
         // Check for any flashing status LEDs
         checkFlashing();
@@ -219,9 +226,8 @@ void initialise(void) {
     INTCON2bits.RBPU = 0;
     // RB bits 0,1,4,5 need pullups
     WPUB = 0x33; 
-    unsigned char i;
-    for (i=0; i< NUM_IO; i++) {
-        configIO(i);
+    for (io=0; io< NUM_IO; io++) {
+        configIO(io);
     }
     initInputScan();
     initServos();
@@ -249,9 +255,9 @@ void defaultPersistentMemory(void) {
     // flash is initialised as a constant in mioNv
     // perform other actions based upon type
     unsigned char i;
-    for (i=0; i<NUM_IO; i++) {
+    for (io=0; io<NUM_IO; io++) {
         //default type is INPUT
-        setType(i, TYPE_INPUT);
+        setType(io, TYPE_INPUT);
     }
     flushFlashImage();
 }

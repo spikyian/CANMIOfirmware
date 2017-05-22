@@ -9,11 +9,11 @@
  */
 
 #include <xc.h>
-#include "GenericTypeDefs.h"
+#include "../../CBUSlib/GenericTypeDefs.h"
 #include "canmio.h"
 #include "mioNv.h"
 #include "config.h"
-#include "FLiM.h"
+#include "../../CBUSlib/FLiM.h"
 
 extern const NodeVarTable nodeVarTable;
 extern Config configs[NUM_IO];
@@ -30,14 +30,16 @@ static BYTE delayCount[NUM_IO];
 // forward declarations
 BOOL readInput(unsigned char io);
 
+static unsigned char io;
+
 /**
  * Initialise the input scan.
  * Initialise using the current input state so that we don't generate state 
  * change events on power up.
  */
 void initInputScan(void) {
-    for (unsigned char i=0; i<NUM_IO; i++) {
-        inputState[i] = readInput(i);
+    for (io=0; io<NUM_IO; io++) {
+        inputState[io] = readInput(io);
     }
 }
 
@@ -47,38 +49,38 @@ void initInputScan(void) {
  *   
  */
 void inputScan(void) {
-    for (unsigned char i=0; i< NUM_IO; i++) {
-        if (nodeVarTable.moduleNVs.io[i].type == TYPE_INPUT) {
-            BYTE input = readInput(i);;
-            if (input != inputState[i]) {
+    for (io=0; io< NUM_IO; io++) {
+        if (nodeVarTable.moduleNVs.io[io].type == TYPE_INPUT) {
+            BYTE input = readInput(io);
+            if (input != inputState[io]) {
                 BOOL change = FALSE;
                 // check if we have reached the debounce count
-                if (inputState[i] && (delayCount[i] == nodeVarTable.moduleNVs.io[i].nv_io.nv_input.input_on_delay)) {
+                if (inputState[io] && (delayCount[io] == nodeVarTable.moduleNVs.io[io].nv_io.nv_input.input_on_delay)) {
                     change = TRUE;
                 }
-                if (!inputState[i] && (delayCount[i] == nodeVarTable.moduleNVs.io[i].nv_io.nv_input.input_off_delay)) {
+                if (!inputState[io] && (delayCount[io] == nodeVarTable.moduleNVs.io[io].nv_io.nv_input.input_off_delay)) {
                     change = TRUE;
                 }
                 if (change) {
-                    delayCount[i] = 0;
-                    inputState[i] = input;
+                    delayCount[io] = 0;
+                    inputState[io] = input;
                     // check if input is inverted
-                    if (nodeVarTable.moduleNVs.io[i].nv_io.nv_input.input_inverted) {
+                    if (nodeVarTable.moduleNVs.io[io].nv_io.nv_input.input_inverted) {
                         input = !input;
                     }
                     // send the changed Produced event
                     if (input) {
-                        cbusSendEvent( 0, -1, input, TRUE);
+                        cbusSendEvent( 0, -1, ACTION_IO_PRODUCER_INPUT_OFF2ON(io), TRUE);
                     } else {
                         // check if OFF events are enabled
-                        if (nodeVarTable.moduleNVs.io[i].nv_io.nv_input.input_enable_off) {
-                            cbusSendEvent( 0, -1, input, FALSE);
+                        if (nodeVarTable.moduleNVs.io[io].nv_io.nv_input.input_enable_off) {
+                            cbusSendEvent( 0, -1, ACTION_IO_PRODUCER_INPUT_ON2OFF(io), FALSE);
                         }
                     }
                 }
-                delayCount[i]++;
+                delayCount[io]++;
             } else {
-                delayCount[i] = 0;
+                delayCount[io] = 0;
             }
         }
     }
