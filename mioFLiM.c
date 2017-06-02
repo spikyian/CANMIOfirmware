@@ -2,11 +2,6 @@
 
  Copyright (C) Pete Brownlow 2014-2017   software@upsys.co.uk
 
-  CBUS CANPanel - FLiM related routines specific to the CANPanel
-
- This code is for a CANPanel CBUS module, to control up to 64 LEDs (or 8 x 7 segment displays)
- and up to 64 push buttons or on/off switches
-
  This work is licensed under the:
       Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License.
    To view a copy of this license, visit:
@@ -43,28 +38,27 @@
           IDE or text editor to the same settings.
 ******************************************************************************************************
 	
- For version number and revision history see CANPanel.h
-
-
+	Original by Pete Bronlow
+	23/5/2017 Modified by Ian Hogg for CANMIO
 */
-
+#include <xc.h>
 #include "canmio.h"
-#include "mioFLiM.h"
-#include "../CBUSlib/TickTime.h"
+#include "mioNv.h"
 #include "mioEvents.h"
+#include "../CBUSlib/devincs.h"
 
 #ifndef __XC8__
 #pragma romdata PARAMETERS
 #endif
 
-#define PRM_CKSUM MANU_ID+MINOR_VER+MODULE_ID+EVT_NUM+EVperEVT+NV_NUM+MAJOR_VER+MODULE_FLAGS+CPU+PB_CAN +(LOAD_ADDRESS>>8)+(LOAD_ADDRESS&0xFF)+CPUM_MICROCHIP+BETA+sizeof(ParamVals)+(MNAME_ADDRESS>>8)+(MNAME_ADDRESS&0xFF)
+#define PRM_CKSUM MANU_ID+MINOR_VER+MODULE_ID+NUM_EVENTS+EVperEVT+NV_NUM+MAJOR_VER+MODULE_FLAGS+CPU+PB_CAN +(LOAD_ADDRESS>>8)+(LOAD_ADDRESS&0xFF)+CPUM_MICROCHIP+BETA+sizeof(ParamVals)+(MNAME_ADDRESS>>8)+(MNAME_ADDRESS&0xFF)
 
 
 const rom ParamVals     FLiMparams = { 
     MANU_ID,        // manufacturer
     MINOR_VER,      // minor version
     MODULE_ID,      // module id
-    NUM_CONSUMED_EVENTS,    // number of events
+    NUM_EVENTS,     // number of events
     EVperEVT,       // number of event variable per event
     NV_NUM,         // number of node variables
     MAJOR_VER,      // Major version

@@ -1,3 +1,31 @@
+
+/*
+ Routines for CBUS FLiM operations - part of CBUS libraries for PIC 18F
+  This work is licensed under the:
+      Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License.
+   To view a copy of this license, visit:
+      http://creativecommons.org/licenses/by-nc-sa/4.0/
+   or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
+   License summary:
+    You are free to:
+      Share, copy and redistribute the material in any medium or format
+      Adapt, remix, transform, and build upon the material
+    The licensor cannot revoke these freedoms as long as you follow the license terms.
+    Attribution : You must give appropriate credit, provide a link to the license,
+                   and indicate if changes were made. You may do so in any reasonable manner,
+                   but not in any way that suggests the licensor endorses you or your use.
+    NonCommercial : You may not use the material for commercial purposes. **(see note below)
+    ShareAlike : If you remix, transform, or build upon the material, you must distribute
+                  your contributions under the same license as the original.
+    No additional restrictions : You may not apply legal terms or technological measures that
+                                  legally restrict others from doing anything the license permits.
+   ** For commercial use, please contact the original copyright holder(s) to agree licensing terms
+**************************************************************************************************************
+	The FLiM routines have no code or definitions that are specific to any
+	module, so they can be used to provide FLiM facilities for any module 
+	using these libraries.
+	
+*/ 
 /* 
  * File:   inputs.c
  * Author: Ian
@@ -9,14 +37,16 @@
  */
 
 #include <xc.h>
-#include "../../CBUSlib/GenericTypeDefs.h"
-#include "canmio.h"
-#include "mioNv.h"
-#include "config.h"
-#include "../../CBUSlib/FLiM.h"
 
-extern const NodeVarTable nodeVarTable;
+#include "mioNv.h"
+#include "../CBUSlib/FliM.h"
+#include "canmio.h"
+#include "config.h"
+#include "mioEvents.h"
+#include "../CBUSlib/cbus.h"
+
 extern Config configs[NUM_IO];
+extern __rom const ModuleNvDefs * NV;
 /**
  * The current state of the inputs. This may not be the actual read state uas we
  * could still be doing the debounce. Instead this is the currently reported input state.
@@ -46,35 +76,37 @@ void initInputScan(void) {
 /**
  * Called regularly to check for changes on the inputs.
  * Generate Produced events upon input change.
+ * 
+ * @param report always send current status if report is TRUE otherwise send only on change
  *   
  */
-void inputScan(void) {
+void inputScan(BOOL report) {
     for (io=0; io< NUM_IO; io++) {
-        if (nodeVarTable.moduleNVs.io[io].type == TYPE_INPUT) {
+        if (NV->io[io].type == TYPE_INPUT) {
             BYTE input = readInput(io);
             if (input != inputState[io]) {
-                BOOL change = FALSE;
+                BOOL change = report;
                 // check if we have reached the debounce count
-                if (inputState[io] && (delayCount[io] == nodeVarTable.moduleNVs.io[io].nv_io.nv_input.input_on_delay)) {
+                if (inputState[io] && (delayCount[io] == NV->io[io].nv_io.nv_input.input_on_delay)) {
                     change = TRUE;
                 }
-                if (!inputState[io] && (delayCount[io] == nodeVarTable.moduleNVs.io[io].nv_io.nv_input.input_off_delay)) {
+                if (!inputState[io] && (delayCount[io] == NV->io[io].nv_io.nv_input.input_off_delay)) {
                     change = TRUE;
                 }
                 if (change) {
                     delayCount[io] = 0;
                     inputState[io] = input;
                     // check if input is inverted
-                    if (nodeVarTable.moduleNVs.io[io].nv_io.nv_input.input_inverted) {
+                    if (NV->io[io].flags & FLAG_INVERTED) {
                         input = !input;
                     }
                     // send the changed Produced event
                     if (input) {
-                        cbusSendEvent( 0, -1, ACTION_IO_PRODUCER_INPUT_OFF2ON(io), TRUE);
+                        cbusSendEvent( 0, -1, ACTION_IO_PRODUCER_INPUT(io), TRUE);
                     } else {
                         // check if OFF events are enabled
-                        if (nodeVarTable.moduleNVs.io[io].nv_io.nv_input.input_enable_off) {
-                            cbusSendEvent( 0, -1, ACTION_IO_PRODUCER_INPUT_ON2OFF(io), FALSE);
+                        if (NV->io[io].nv_io.nv_input.input_enable_off) {
+                            cbusSendEvent( 0, -1, ACTION_IO_PRODUCER_INPUT(io), FALSE);
                         }
                     }
                 }
@@ -92,7 +124,7 @@ void inputScan(void) {
  * @return Non zero is the input is high or FALSE if the input is low
  */
 BOOL readInput(unsigned char io) {
-    if (nodeVarTable.moduleNVs.io[io].type == TYPE_INPUT) {
+    if (NV->io[io].type == TYPE_INPUT) {
             switch(configs[io].port) {
             case 'a':
                 return TRISA & (1<<configs[io].no);

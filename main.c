@@ -1,3 +1,31 @@
+
+/*
+ Routines for CBUS FLiM operations - part of CBUS libraries for PIC 18F
+  This work is licensed under the:
+      Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License.
+   To view a copy of this license, visit:
+      http://creativecommons.org/licenses/by-nc-sa/4.0/
+   or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
+   License summary:
+    You are free to:
+      Share, copy and redistribute the material in any medium or format
+      Adapt, remix, transform, and build upon the material
+    The licensor cannot revoke these freedoms as long as you follow the license terms.
+    Attribution : You must give appropriate credit, provide a link to the license,
+                   and indicate if changes were made. You may do so in any reasonable manner,
+                   but not in any way that suggests the licensor endorses you or your use.
+    NonCommercial : You may not use the material for commercial purposes. **(see note below)
+    ShareAlike : If you remix, transform, or build upon the material, you must distribute
+                  your contributions under the same license as the original.
+    No additional restrictions : You may not apply legal terms or technological measures that
+                                  legally restrict others from doing anything the license permits.
+   ** For commercial use, please contact the original copyright holder(s) to agree licensing terms
+**************************************************************************************************************
+	The FLiM routines have no code or definitions that are specific to any
+	module, so they can be used to provide FLiM facilities for any module 
+	using these libraries.
+	
+*/ 
 /*
  * File:   main.c
  * Author: Ian Hogg
@@ -48,18 +76,26 @@
 #include "canmio.h"
 #include "mioFLiM.h"
 #include "config.h"
-#include "../CBUSlib/StatusLeds.h"
+#include "StatusLeds.h"
 #include "inputs.h"
 #include "mioEEPROM.h"
-#include "../CBUSlib/events.h"
+#include "events.h"
 #include "mioNv.h"
-#include "../CBUSlib/FLiM.h"
-#include "../CBUSlib/romops.h"
+#include "FliM.h"
+#include "romops.h"
+#include "can18.h"
+#include "cbus.h"
+
+
+void DATAEE_WriteByte(WORD bAdd, BYTE bData);
+BYTE DATAEE_ReadByte(WORD bAdd);
 
 extern BYTE BlinkLED();
 extern void startServos();
 extern void initServos();
 extern void pollServos();
+extern void initOutputs();
+extern void processOutputs();
 extern inline void timer1DoneInterruptHandler();
 extern inline void timer2DoneInterruptHandler();
 extern inline void timer3DoneInterruptHandler();
@@ -90,13 +126,14 @@ Config configs[NUM_IO] = {
 };
 
 // forward declarations
-BYTE inputScan(void);
+void inputScan(BOOL report);
 void __init(void);
 BOOL checkCBUS( void);
 void ISRHigh(void);
 void initialise(void);
 void configIO(unsigned char io);
-void defaultPersistentMemory(void);
+void factoryReset(void);
+void factoryResetGlobalNv(void);
 void setType(unsigned char i, unsigned char type);
 void setOutput(unsigned char i, unsigned char state, unsigned char type);
 void sendProducedEvent(unsigned char action, BOOL on);
@@ -156,6 +193,7 @@ static BOOL        started = FALSE;
 static TickValue   lastServoPollTime;
 static TickValue   lastServoStartTime;
 static unsigned char io;
+extern __rom const ModuleNvDefs * NV;
 
 // MAIN APPLICATION
         
@@ -168,9 +206,13 @@ void main(void) {
 #else
 int main(void) @0x800 {
 #endif
-    initialise();
+    initRomOps();
+    // The very first ee_write seems to not work so I put a dummy write here
+    ee_write((WORD)EE_DUMMY, 0xff);
+    initStatusLeds();
+    initialise(); 
     startTime.Val = tickGet();
- 
+
     while (TRUE) {
         // Startup delay for CBUS about 2 seconds to let other modules get powered up - ISR will be running so incoming packets processed
         if (!started && (tickTimeSince(startTime) > (NV->sendSodDelay * HUNDRED_MILI_SECOND) + TWO_SECOND)) {
@@ -179,17 +221,22 @@ int main(void) @0x800 {
                 sendProducedEvent(ACTION_SOD, TRUE);
             }
         }
-        checkCBUS();    // Consume any CBUS message - display it if not display message mode
+        checkCBUS();    // Consume any CBUS message and act upon it
         FLiMSWCheck();  // Check FLiM switch for any mode changes
         
         if (started) {
-            inputScan();    // Strobe keyboard for button presses
             if (tickTimeSince(lastServoStartTime) > 5*ONE_MILI_SECOND) {
+#ifdef SERVO
                 startServos();  // call every 5ms
+#endif
+                inputScan(FALSE);    // Strobe inputs for changes
                 lastServoStartTime.Val = tickGet();
             }
-            if (tickTimeSince(lastServoPollTime) > 20*ONE_MILI_SECOND) {
+            if (tickTimeSince(lastServoPollTime) > 100*ONE_MILI_SECOND) {
+#ifdef SERVO
                 pollServos();
+#endif
+                processOutputs();
                 lastServoPollTime.Val = tickGet();
             }
         }
@@ -204,61 +251,67 @@ int main(void) @0x800 {
  */
 void initialise(void) {
     // enable the 4x PLL
-    OSCTUNEbits.PLLEN = 1;
-    
+    OSCTUNEbits.PLLEN = 1; 
     // Digital I/O - disable analogue
     ANCON0 = 0;
     ANCON1 = 0;
     
     // check if EEPROM is valid
-    if (ee_read((WORD)EE_RESET) != 0xCA) {
+   if (ee_read((WORD)EE_RESET) != 0xCA) {
         // set EEPROM and Flash to default values
-        defaultPersistentMemory();
+        factoryReset();
         // set the reset flag to indicate it has been initialised
         ee_write((WORD)EE_RESET, 0xCA);
     }
     canid = ee_read((WORD)EE_CAN_ID);
-    nn = ee_read((WORD)EE_NODE_ID);
-    
-    initTicker();
+    nn = ee_read_short((WORD)EE_NODE_ID);
+    initTicker(0);  // set low priority
     // set up io pins based upon type
     // Enable PORT B weak pullups
     INTCON2bits.RBPU = 0;
     // RB bits 0,1,4,5 need pullups
     WPUB = 0x33; 
+    initStatusLeds();
+    // set the ports to the correct type
     for (io=0; io< NUM_IO; io++) {
         configIO(io);
     }
     initInputScan();
+#ifdef SERVO
     initServos();
+#endif
+    initOutputs();
     mioFlimInit(); // This will call FLiMinit, which, in turn, calls eventsInit
 
     // Enable interrupt priority
     RCONbits.IPEN = 1;
     // enable interrupts, all init now done
-    ei();
- 
+    ei(); 
     setStatusLed(flimState == fsFLiM);
 }    
 
 /**
  * Set up the EEPROM and Flash.
- * Should only get called once on first power up. Initialised EEPROM and Flash.
+ * Should get called once on first power up or upon NNRST CBUS command. 
+ * Initialise EEPROM and Flash.
  */
-void defaultPersistentMemory(void) {
+void factoryReset(void) {
     // set EEPROM to default values
     ee_write((WORD)EE_BOOT_FLAG, 0);
     ee_write((WORD)EE_CAN_ID, DEFAULT_CANID);
     ee_write_short((WORD)EE_NODE_ID, DEFAULT_NN); 
     ee_write((WORD)EE_FLIM_MODE, fsSLiM);
-    
-    // flash is initialised as a constant in mioNv
+  
+    factoryResetGlobalNv();
+
     // perform other actions based upon type
     unsigned char i;
     for (io=0; io<NUM_IO; io++) {
         //default type is INPUT
         setType(io, TYPE_INPUT);
-    }
+        // Event flash - just clear all events 
+        defaultEvents(io, TYPE_INPUT);
+    } 
     flushFlashImage();
 }
 
@@ -268,11 +321,15 @@ void defaultPersistentMemory(void) {
  * @param type the new Type
  */
 void setType(unsigned char i, unsigned char type) {
-    writeFlashImage((BYTE*)(AT_NV+NV_IO_TYPE(i)), type);
+    WORD addr = AT_NV+NV_IO_TYPE(i);
+    writeFlashImage((BYTE*)addr, type);
     // set to default NVs
     defaultNVs(i, type);
-    // set up the default events
-    defaultEvents(i, type);
+    // set up the default events. 
+    // Actually found we don't need to do defaultEvents - which is good because:
+    // a) it is a pain to implement
+    // b) it messes with the user's settings
+//    defaultEvents(i, type);
 }
 
 /**
@@ -306,18 +363,13 @@ void configIO(unsigned char i) {
                 TRISA |= (1 << configs[i].no);  // input
             } else {
                 TRISA &= ~(1 << configs[i].no); // output
-                // If this is an output (OUTPUT, SERVO, BOUNCE) set the value to valued saved in EE
-                setOutput(i, ee_read((WORD)EE_OP_STATE+i), NV->io[i].type);
             }
-            
             break;
         case 'B':
             if (NV->io[i].type == TYPE_INPUT) {
                 TRISB |= (1 << configs[i].no);  // input
             } else {
                 TRISB &= ~(1 << configs[i].no); // output
-                // If this is an output (OUTPUT, SERVO, BOUNCE) set the value to valued saved in EE
-                setOutput(i, ee_read((WORD)EE_OP_STATE+i), NV->io[i].type);
             }
             break;
         case 'C':
@@ -325,10 +377,12 @@ void configIO(unsigned char i) {
                 TRISC |= (1 << configs[i].no);  // input
             } else {
                 TRISC &= ~(1 << configs[i].no); // output
-                // If this is an output (OUTPUT, SERVO, BOUNCE) set the value to valued saved in EE
-                setOutput(i, ee_read((WORD)EE_OP_STATE+i), NV->io[i].type);
             }
             break;          
+    }
+    // If this is an output (OUTPUT, SERVO, BOUNCE) set the value to valued saved in EE
+    if (NV->io[i].flags & FLAG_STARTUP) {
+        setOutput(i, ee_read((WORD)EE_OP_STATE-i), NV->io[i].type);
     }
 }
 
@@ -368,6 +422,7 @@ void __init(void)
 
 void interrupt high_priority high_isr (void)
 {
+#ifdef SERVO
  /* service the servo pulse width timers */
     if (PIR1bits.TMR1IF) {
         timer1DoneInterruptHandler();
@@ -385,5 +440,6 @@ void interrupt high_priority high_isr (void)
         timer4DoneInterruptHandler();
         PIR4bits.TMR4IF = 0;
     }
+#endif
 }
 
